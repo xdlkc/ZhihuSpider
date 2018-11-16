@@ -13,6 +13,8 @@ class TopicSpider(scrapy.Spider):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.client = pymongo.MongoClient()
+        self.topic_id_str = 'topic_id'
+        self.page_no_str = 'page_no'
         self.db = self.client["zhihu"]
         self.url = "https://www.zhihu.com/api/v4/topics/{0}/feeds/essence?include=data%5B%3F(" \
                    "target.type%3Dtopic_sticky_module)%5D.target.data%5B%3F(" \
@@ -33,10 +35,24 @@ class TopicSpider(scrapy.Spider):
                    "type%3Dbest_answerer)%5D.topics%3Bdata%5B%3F(" \
                    "target.type%3Dquestion)%5D.target.annotation_detail%2Ccomment_count&limit=10&offset={1}"
         # 话题列表
-        topic_ids = [19555513, 19551556, 19551137]
+        topic_ids = []
+        # 已经爬取的话题id
+        over_topics = [d[self.topic_id_str]
+                       for d in self.db.over_topics.find()]
+        count = 0
+        for topic in self.db.spider_topic.find():
+            spider_id = topic[self.topic_id_str]
+            if spider_id not in over_topics:
+                topic_ids.append(int(spider_id))
+                count += 1
+                if count == 5:
+                    break
+
+        print("***********{}".format(topic_ids))
         self.start_page = {}
         for topic_id in topic_ids:
-            last_page = self.db.last_page.find_one({'topic_id': topic_id})
+            last_page = self.db.last_page.find_one(
+                {self.topic_id_str: topic_id})
             if last_page:
                 self.start_page[topic_id] = last_page['page_no']
             else:
@@ -45,34 +61,36 @@ class TopicSpider(scrapy.Spider):
             self.start_urls.append(url)
 
     def parse(self, response):
-        page_no_str = 'page_no'
-        topic_id_str = 'topic_id'
 
-        if topic_id_str in response.meta:
-            topic_id = response.meta[topic_id_str]
+        if self.topic_id_str in response.meta:
+            topic_id = response.meta[self.topic_id_str]
         else:
-            topic_id = int(re.findall(r"https://www.zhihu.com/api/v4/topics/(.+?)/feeds/essence", response.url)[0])
+            topic_id = int(re.findall(
+                r"https://www.zhihu.com/api/v4/topics/(.+?)/feeds/essence", response.url)[0])
 
-        if page_no_str in response.meta:
-            page_no = response.meta[page_no_str]
+        if self.page_no_str in response.meta:
+            page_no = response.meta[self.page_no_str]
         else:
             page_no = self.start_page[topic_id]
 
         next_url = self.url.format(topic_id, page_no + 1)
         meta = response.meta
-        meta[page_no_str] = page_no + 1
+        meta[self.page_no_str] = page_no + 1
 
         # 查看目前爬取的最后一页，并与当前页比较后更新
-        last_page = self.db.last_page.find_one({topic_id_str: topic_id})
+        last_page = self.db.last_page.find_one({self.topic_id_str: topic_id})
         if last_page:
-            if page_no_str in last_page:
-                if page_no > int(last_page[page_no_str]):
-                    self.db.last_page.update(last_page, {'$set': {topic_id_str: topic_id, page_no_str: page_no}})
+            if self.page_no_str in last_page:
+                if page_no > int(last_page[self.page_no_str]):
+                    self.db.last_page.update(
+                        last_page, {'$set': {self.topic_id_str: topic_id, self.page_no_str: page_no}})
         else:
-            self.db.last_page.insert({topic_id_str: topic_id, page_no_str: page_no})
+            self.db.last_page.insert(
+                {self.topic_id_str: topic_id, self.page_no_str: page_no})
 
         # 查看是否已经爬取过当前页的数据
-        is_saved = self.db.saved_topics.find({topic_id_str: topic_id, page_no_str: page_no}).count()
+        is_saved = self.db.saved_topics.find(
+            {self.topic_id_str: topic_id, self.page_no_str: page_no}).count()
         if is_saved:
             print("topic_id:{},page:{} exists".format(topic_id, page_no))
             yield scrapy.Request(url=next_url, meta=meta, callback=self.parse)
@@ -85,12 +103,13 @@ class TopicSpider(scrapy.Spider):
                 target = item.pop('target')
                 item['answer_id'] = target.pop('id')
                 is_answered = self.db.saved_answers.find(
-                    {topic_id_str: topic_id, 'answer_id': item['answer_id']}).count()
+                    {self.topic_id_str: topic_id, 'answer_id': item['answer_id']}).count()
                 if is_answered:
                     items.remove(item)
                     continue
                 else:
-                    self.db.saved_answers.insert({topic_id_str: topic_id, 'answer_id': item['answer_id']})
+                    self.db.saved_answers.insert(
+                        {self.topic_id_str: topic_id, 'answer_id': item['answer_id']})
                 item['answer_url'] = target.pop('url')
                 # 有的类别如专栏，不存在问题这项
                 if 'question' in item['answer_url']:
@@ -99,7 +118,7 @@ class TopicSpider(scrapy.Spider):
                 if 'excerpt' in target:
                     item['excerpt'] = target.pop('excerpt')
                 item['target'] = target
-                item[topic_id_str] = topic_id
+                item[self.topic_id_str] = topic_id
 
             # 当前页是否是最后一页
             is_end = js["paging"]["is_end"]
@@ -108,6 +127,14 @@ class TopicSpider(scrapy.Spider):
 
             if len(items) > 0:
                 self.db.answers.insert_many(items)
-                self.db.saved_topics.insert({topic_id_str: topic_id, page_no_str: page_no})
+                self.db.saved_topics.insert(
+                    {self.topic_id_str: topic_id, self.page_no_str: page_no})
             print("topic_id:{} ,page:{} over".format(topic_id, page_no))
             yield scrapy.Request(url=next_url, meta=meta, callback=self.parse)
+
+
+if __name__ == '__main__':
+    client = pymongo.MongoClient()
+    db = client["zhihu"]
+    s = [d['topic_id'] for d in db.over_topics.find()]
+    print(10*"*")
