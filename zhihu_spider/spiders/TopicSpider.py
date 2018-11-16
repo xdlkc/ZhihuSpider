@@ -3,6 +3,7 @@ import scrapy
 import json
 import pymongo
 import re
+import logging
 
 
 class TopicSpider(scrapy.Spider):
@@ -45,10 +46,9 @@ class TopicSpider(scrapy.Spider):
             if spider_id not in over_topics:
                 topic_ids.append(int(spider_id))
                 count += 1
-                if count == 5:
+                if count == 10:
                     break
-
-        print("***********{}".format(topic_ids))
+        logging.log(msg="***********{}".format(topic_ids), level=logging.INFO)
         self.start_page = {}
         for topic_id in topic_ids:
             last_page = self.db.last_page.find_one(
@@ -92,7 +92,7 @@ class TopicSpider(scrapy.Spider):
         is_saved = self.db.saved_topics.find(
             {self.topic_id_str: topic_id, self.page_no_str: page_no}).count()
         if is_saved:
-            print("topic_id:{},page:{} exists".format(topic_id, page_no))
+            logging.log(msg="topic_id:{},page:{} exists".format(topic_id, page_no), level=logging.INFO)
             yield scrapy.Request(url=next_url, meta=meta, callback=self.parse)
         else:
             js = json.loads(response.body)
@@ -112,7 +112,7 @@ class TopicSpider(scrapy.Spider):
                         {self.topic_id_str: topic_id, 'answer_id': item['answer_id']})
                 item['answer_url'] = target.pop('url')
                 # 有的类别如专栏，不存在问题这项
-                if 'question' in item['answer_url']:
+                if 'answers' in item['answer_url']:
                     item['question'] = target.pop('question')
                 item['content'] = target.pop('content')
                 if 'excerpt' in target:
@@ -123,18 +123,17 @@ class TopicSpider(scrapy.Spider):
             # 当前页是否是最后一页
             is_end = js["paging"]["is_end"]
             if is_end:
+                self.db.over_topics.insert({self.topic_id_str: topic_id})
                 return
 
             if len(items) > 0:
                 self.db.answers.insert_many(items)
                 self.db.saved_topics.insert(
                     {self.topic_id_str: topic_id, self.page_no_str: page_no})
-            print("topic_id:{} ,page:{} over".format(topic_id, page_no))
+            logging.log(msg="topic_id:{} ,page:{} over".format(topic_id, page_no), level=logging.INFO)
             yield scrapy.Request(url=next_url, meta=meta, callback=self.parse)
 
 
 if __name__ == '__main__':
     client = pymongo.MongoClient()
     db = client["zhihu"]
-    s = [d['topic_id'] for d in db.over_topics.find()]
-    print(10*"*")

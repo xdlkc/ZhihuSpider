@@ -9,6 +9,7 @@ from scrapy import signals
 from .settings import USER_AGENT_LIST
 import random
 
+
 class ZhihuSpiderSpiderMiddleware(object):
     # Not all methods need to be defined. If a method is not defined,
     # scrapy acts as if the spider middleware does not modify the
@@ -103,9 +104,10 @@ class ZhihuSpiderDownloaderMiddleware(object):
     def spider_opened(self, spider):
         spider.logger.info('Spider opened: %s' % spider.name)
 
+
 class RandomUserAgentMiddleware(object):
     """
-    随机更换User-Agent
+    随机更换User-Agent Middleware
     """
 
     def __init__(self, crawler):

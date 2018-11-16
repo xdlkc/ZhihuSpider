@@ -8,6 +8,7 @@
 #     https://doc.scrapy.org/en/latest/topics/settings.html
 #     https://doc.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://doc.scrapy.org/en/latest/topics/spider-middleware.html
+from datetime import datetime
 
 BOT_NAME = 'zhihu_spider'
 
@@ -122,3 +123,7 @@ USER_AGENT_LIST = [
     "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0; Trident/4.0)",
     "Opera/9.80 (Macintosh; Intel Mac OS X 10.6.8; U; en) Presto/2.9.168 Version/11.52",
     ""]
+today = datetime.now()
+log_file_path = "log/{}-{}-{}.log".format(today.year, today.month, today.day)
+LOG_LEVEL = 'INFO'
+LOG_FILE = log_file_path
