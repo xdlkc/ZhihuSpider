@@ -4,11 +4,13 @@
 2. 爬取某个话题下的所有回答及专栏
 
 # 技术栈
+
 1. python3.7
 2. mongodb
 3. scrapy
 
 # 代码说明
+
 1. TopicidSpider为子话题爬虫，将爬到的话题id及话题名称存入mongodb
 2. TopicSpider为回复爬虫，通过读取mongodb中的某一话题id，爬取对应的回复
 3. 同时在配置文件中配置了User-Agent列表，防止被限制
