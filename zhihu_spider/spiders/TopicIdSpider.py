@@ -8,8 +8,7 @@ import json
 class TopicidSpider(scrapy.Spider):
     name = 'TopicIdSpider'
     allowed_domains = []
-    start_urls = ['https://www.zhihu.com/topics#投资']
-    index_url = 'https://www.zhihu.com/topics'
+    start_urls = ['https://www.zhihu.com/topics']
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

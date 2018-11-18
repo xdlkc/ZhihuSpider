@@ -42,14 +42,15 @@ class TopicSpider(scrapy.Spider):
                        for d in self.db.over_topics.find()]
         count = 0
         for topic in self.db.spider_topic.find():
-            spider_id = topic[self.topic_id_str]
+            spider_id = int(topic[self.topic_id_str])
             if spider_id not in over_topics:
                 topic_ids.append(int(spider_id))
                 count += 1
-                if count == 10:
+                if count == 20:
                     break
         logging.log(msg="***********{}".format(topic_ids), level=logging.INFO)
         self.start_page = {}
+        print(topic_ids)
         for topic_id in topic_ids:
             last_page = self.db.last_page.find_one(
                 {self.topic_id_str: topic_id})
