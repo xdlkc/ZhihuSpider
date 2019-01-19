@@ -8,6 +8,9 @@
 from scrapy import signals
 from .settings import USER_AGENT_LIST
 import random
+from scrapy.contrib.downloadermiddleware.httpproxy import HttpProxyMiddleware
+from scrapy.contrib.downloadermiddleware.useragent import UserAgentMiddleware
+import redis
 
 
 class ZhihuSpiderSpiderMiddleware(object):
@@ -105,21 +108,27 @@ class ZhihuSpiderDownloaderMiddleware(object):
         spider.logger.info('Spider opened: %s' % spider.name)
 
 
-class RandomUserAgentMiddleware(object):
+class RandomUserAgentMiddleware(UserAgentMiddleware):
     """
     随机更换User-Agent Middleware
     """
 
-    def __init__(self, crawler):
-        super(RandomUserAgentMiddleware, self).__init__()
-        # self.ua = UserAgent()
-        # self.ua.update()
-        # self.ua_type = 'ie'
-
-    @classmethod
-    def from_crawler(cls, crawler):
-        return cls(crawler)
+    def __init__(self, user_agent=''):
+        self.user_agent = user_agent
 
     def process_request(self, request, spider):
-        ua = random.sample(USER_AGENT_LIST, 1)
+        ua = random.sample(USER_AGENT_LIST, 1)[0]
+        # print("当前使用User-Agent是：" + ua)
         request.headers.setdefault('User-Agent', ua)
+
+
+class IPPOOlS(HttpProxyMiddleware):
+    def __init__(self, ip=''):
+        self.redis_cli = redis.Redis(host='localhost', port=6379, decode_responses=True, db=8)
+        self.ip = ip
+
+    def process_request(self, request, spider):
+        ips = self.redis_cli.zrange('index::score', 0, -1)
+        thisip = random.choice(ips).split('::')[1][:-2]
+        # print("当前使用IP是：" + thisip)
+        request.meta["proxy"] = "http://" + thisip
