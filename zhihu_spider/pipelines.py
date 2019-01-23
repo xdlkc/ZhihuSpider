@@ -28,12 +28,42 @@ class ZhihuSpiderPipeline(object):
             spider.crawler.engine.close_spider(spider, 'process_movie_item err:{}'.format(e))
 
     def process_topic_item(self, item):
-        id = item['id']
-        if self.redis_manager.rdc.sismember(TopicEnum.over_topic_id_set.value, id):
-            logging.info("topic {} already crawled...".format(id))
+        rdc = self.redis_manager.rdc
+        children_id = item['id']
+        parent_id = item['parent_id']
+
+        children_db_id = rdc.hget(TopicEnum.topic_id_to_db_id_hash.value, children_id)
+
+        parent_db_id = rdc.hget(TopicEnum.topic_id_to_db_id_hash.value, parent_id)
+        query_id_sql = 'select id from topic where topic_id = %s;'
+        if parent_db_id is None:
+            id_set = self.db_manager.execute_query(query_id_sql, parent_id)
+            if len(id_set) <= 0:
+                logging.error("parent topic {} not existed...".format(parent_id))
+                raise Exception
+            parent_db_id = id_set[0][0]
+            rdc.hset(TopicEnum.topic_id_to_db_id_hash.value, parent_id, parent_db_id)
+
+        if children_db_id is None:
+            id_set = self.db_manager.execute_query(query_id_sql, children_id)
+            if len(id_set) <= 0:
+                logging.info("insert new topic {}...".format(children_id))
+                ins_sql = "insert into topic (topic_id, name, url, excerpt, introduction, avatar_url, type, category,is_black,is_vote) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                self.db_manager.execute_dml(ins_sql, item['id'], item['name'], item['url'], item['excerpt'],
+                                            item['introduction'], item['avatar_url'], item['type'], item['category'],
+                                            item['is_black'], item['is_vote'])
+                id_set = self.db_manager.execute_query(query_id_sql, children_id)
+                if len(id_set) <= 0:
+                    logging.error("children topic {} insert failed...".format(children_id))
+                    raise Exception
+            children_db_id = id_set[0][0]
+            rdc.hset(TopicEnum.topic_id_to_db_id_hash.value, children_id, children_db_id)
+
+        relate_redis_str = "{}_{}".format(TopicEnum.over_children_topic_id_set.value, parent_db_id)
+
+        if rdc.sismember(relate_redis_str, children_db_id):
+            logging.info("topic {} and children topic {} already crawled...".format(parent_id, children_id))
             return
-        ins_sql = "insert into topic (topic_id, name, url, excerpt, introduction, avatar_url, type, category, parent_id,is_black,is_vote) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
-        self.db_manager.execute_dml(ins_sql, item['id'], item['name'], item['url'], item['excerpt'],
-                                    item['introduction'], item['avatar_url'], item['type'], item['category'],
-                                    item['parent_id'], item['is_black'], item['is_vote'])
-        self.redis_manager.rdc.sadd(TopicEnum.over_topic_id_set.value, id)
+        insert_relate_topic = 'insert into topic_related (topic_id, children_id) values (%s,%s);'
+        self.db_manager.execute_dml(insert_relate_topic, parent_db_id, children_db_id)
+        rdc.sadd(relate_redis_str, children_db_id)
